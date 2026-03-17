@@ -1,5 +1,43 @@
-on: [push, pull_request, workflow_dispatch]
+name: ZMK Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
-    uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@main
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        board: [nice_nano_v2]
+        shield: [charybdis_left, charybdis_right]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup West (ZMK)
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install --upgrade west
+          west init -l app
+          west update
+          west zephyr-export
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y ninja-build gperf ccache dfu-util device-tree-compiler wget python3-pip xz-utils file make cmake gcc-arm-none-eabi
+
+      - name: Build firmware
+        run: |
+          mkdir -p build
+          west build -s app -b ${{ matrix.board }} -- -DSHIELD=${{ matrix.shield }} -DZMK_CONFIG=config -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: firmware-${{ matrix.shield }}
+          path: build/zephyr/zephyr.hex
